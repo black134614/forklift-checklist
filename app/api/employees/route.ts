@@ -6,6 +6,6 @@ export async function GET() {
 
   const res = await fetch(url, { cache: "no-store" });
   const data = await res.json();
-
+  
   return NextResponse.json(data);
 }

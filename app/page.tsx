@@ -7,10 +7,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
 
 import {
   ResponsiveContainer,
-  LineChart,
+  ComposedChart,
+  Bar,
   Line,
   XAxis,
   YAxis,
@@ -43,8 +45,12 @@ export default function DashboardPage() {
         setError("");
 
         const [missingRes, summaryRes] = await Promise.all([
-          fetch("/api/admin/missing", { cache: "no-store" }).then((r) => r.json()),
-          fetch("/api/admin/summary", { cache: "no-store" }).then((r) => r.json()),
+          fetch("/api/admin/missing", { cache: "no-store" }).then((r) =>
+            r.json()
+          ),
+          fetch("/api/admin/summary", { cache: "no-store" }).then((r) =>
+            r.json()
+          ),
         ]);
 
         if (missingRes?.error) throw new Error(missingRes.error);
@@ -68,7 +74,9 @@ export default function DashboardPage() {
 
     // ✅ Lấy checked_count của hôm nay từ daily_summary để đảm bảo đúng
     const todayRow = summary.data?.find((r) => String(r.date).trim() === today);
-    const checkedToday = todayRow ? Number(todayRow.checked_count || 0) : Number(missing.checked || 0);
+    const checkedToday = todayRow
+      ? Number(todayRow.checked_count || 0)
+      : Number(missing.checked || 0);
 
     // ✅ Tính missing thủ công dựa trên tổng xe
     const missingCountCalculated = Math.max(0, total - checkedToday);
@@ -76,7 +84,9 @@ export default function DashboardPage() {
     const completion = total ? Math.round((checkedToday / total) * 100) : 0;
 
     // ⚠️ kiểm tra mismatch giữa API missing list và calculated
-    const missingListCount = Array.isArray(missing.missing) ? missing.missing.length : 0;
+    const missingListCount = Array.isArray(missing.missing)
+      ? missing.missing.length
+      : 0;
     const mismatch = missingListCount !== missingCountCalculated;
 
     return {
@@ -94,13 +104,25 @@ export default function DashboardPage() {
   return (
     <div className="max-w-6xl mx-auto p-4 space-y-4">
       {/* Header */}
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-bold">Dashboard Checklist Xe Nâng</h1>
-        {kpi?.date && (
-          <div className="text-sm text-muted-foreground">
-            Ngày hiện tại: <Badge variant="secondary">{kpi.date}</Badge>
-          </div>
-        )}
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-bold">Dashboard Checklist Xe Nâng</h1>
+          {kpi?.date && (
+            <div className="text-sm text-muted-foreground">
+              Ngày hiện tại: <Badge variant="secondary">{kpi.date}</Badge>
+            </div>
+          )}
+        </div>
+
+        <Button asChild variant="outline">
+          <a
+            href="https://docs.google.com/spreadsheets/d/1EPb1LKzWo6Z0qRsCBIPAr-d0UpBjakwxG8YoxczjBvA/edit?gid=0#gid=0"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Mở Google Sheet quản lý
+          </a>
+        </Button>
       </div>
 
       {/* Error */}
@@ -116,7 +138,8 @@ export default function DashboardPage() {
         <Alert>
           <AlertTitle>⏳ Đang tải dữ liệu...</AlertTitle>
           <AlertDescription>
-            Vui lòng chờ trong giây lát, hệ thống đang tải báo cáo hôm nay và dữ liệu biểu đồ.
+            Vui lòng chờ trong giây lát, hệ thống đang tải báo cáo hôm nay và dữ
+            liệu biểu đồ.
           </AlertDescription>
         </Alert>
       )}
@@ -125,7 +148,6 @@ export default function DashboardPage() {
       {!loading && missing && summary && kpi && (
         <>
           {/* ⚠️ Mismatch warning */}
-          
 
           {/* KPI */}
           <div className="grid gap-3 md:grid-cols-5">
@@ -133,19 +155,25 @@ export default function DashboardPage() {
               <CardHeader>
                 <CardTitle className="text-sm">Tổng xe Active</CardTitle>
               </CardHeader>
-              <CardContent className="text-3xl font-bold">{kpi.total}</CardContent>
+              <CardContent className="text-3xl font-bold">
+                {kpi.total}
+              </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm">Đã checklist hôm nay</CardTitle>
               </CardHeader>
-              <CardContent className="text-3xl font-bold">{kpi.checked}</CardContent>
+              <CardContent className="text-3xl font-bold">
+                {kpi.checked}
+              </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">Chưa checklist hôm nay</CardTitle>
+                <CardTitle className="text-sm">
+                  Chưa checklist hôm nay
+                </CardTitle>
               </CardHeader>
               <CardContent className="text-3xl font-bold text-red-600">
                 {kpi.missingCalculated}
@@ -165,12 +193,15 @@ export default function DashboardPage() {
               <CardHeader>
                 <CardTitle className="text-sm">Tỉ lệ hoàn thành</CardTitle>
               </CardHeader>
-              <CardContent className="text-3xl font-bold">{kpi.completion}%</CardContent>
+              <CardContent className="text-3xl font-bold">
+                {kpi.completion}%
+              </CardContent>
             </Card>
           </div>
 
           <Separator />
 
+          {/* Missing List (NO LINKS) */}
           {/* Missing List (NO LINKS) */}
           <Card>
             <CardHeader>
@@ -190,7 +221,14 @@ export default function DashboardPage() {
                   <Alert variant="destructive">
                     <AlertTitle>⚠️ Cảnh báo</AlertTitle>
                     <AlertDescription>
-                      Danh sách <b>{missing.missing.length}</b> xe chưa checklist hôm nay.
+                      Theo thống kê hôm nay còn <b>{kpi.missingCalculated}</b>{" "}
+                      xe chưa checklist.
+                      {kpi.mismatch && (
+                        <div className="text-sm mt-2 text-muted-foreground">
+                          (Danh sách xe bên dưới đang lấy từ API missing:{" "}
+                          <b>{missing.missing.length}</b> xe.)
+                        </div>
+                      )}
                     </AlertDescription>
                   </Alert>
 
@@ -221,25 +259,39 @@ export default function DashboardPage() {
 
             <CardContent style={{ height: 380 }}>
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={summary.data}>
+                <ComposedChart data={summary.data}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-                  <YAxis />
+
+                  {/* ✅ Trục trái: số xe checklist */}
+                  <YAxis yAxisId="left" />
+
+                  {/* ✅ Trục phải: số sự cố */}
+                  <YAxis yAxisId="right" orientation="right" />
+
                   <Tooltip />
                   <Legend />
-                  <Line
-                    type="monotone"
+
+                  {/* ✅ Column/Bar cho checked_count */}
+                  <Bar
+                    yAxisId="left"
                     dataKey="checked_count"
                     name="Số xe checklist"
-                    strokeWidth={2}
+                    barSize={28}
+                    radius={[6, 6, 0, 0]}
                   />
+
+                  {/* ✅ Line cho issue_count */}
                   <Line
+                    yAxisId="right"
                     type="monotone"
                     dataKey="issue_count"
                     name="Số sự cố"
-                    strokeWidth={2}
+                    strokeWidth={3}
+                    dot={{ r: 4 }}
+                    activeDot={{ r: 6 }}
                   />
-                </LineChart>
+                </ComposedChart>
               </ResponsiveContainer>
             </CardContent>
           </Card>
