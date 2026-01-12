@@ -32,9 +32,14 @@ type MissingResponse = {
 type SummaryRow = { date: string; checked_count: number; issue_count: number };
 type SummaryResponse = { days?: number; data: SummaryRow[] };
 
+type DriverItem = { employeeCode: string; employeeName: string; count: number };
+type DriversResponse = { date: string; totalDrivers: number; drivers: DriverItem[] };
+
 export default function DashboardPage() {
   const [missing, setMissing] = useState<MissingResponse | null>(null);
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
+  const [drivers, setDrivers] = useState<DriversResponse | null>(null);
+
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -44,20 +49,19 @@ export default function DashboardPage() {
         setLoading(true);
         setError("");
 
-        const [missingRes, summaryRes] = await Promise.all([
-          fetch("/api/admin/missing", { cache: "no-store" }).then((r) =>
-            r.json()
-          ),
-          fetch("/api/admin/summary", { cache: "no-store" }).then((r) =>
-            r.json()
-          ),
+        const [missingRes, summaryRes, driversRes] = await Promise.all([
+          fetch("/api/admin/missing", { cache: "no-store" }).then((r) => r.json()),
+          fetch("/api/admin/summary", { cache: "no-store" }).then((r) => r.json()),
+          fetch("/api/admin/drivers", { cache: "no-store" }).then((r) => r.json()),
         ]);
 
         if (missingRes?.error) throw new Error(missingRes.error);
         if (summaryRes?.error) throw new Error(summaryRes.error);
+        if (driversRes?.error) throw new Error(driversRes.error);
 
         setMissing(missingRes);
         setSummary(summaryRes);
+        setDrivers(driversRes);
       } catch (e: any) {
         setError(e.message || "Không tải được dữ liệu dashboard");
       } finally {
@@ -72,32 +76,28 @@ export default function DashboardPage() {
     const total = Number(missing.total || 0);
     const today = String(missing.date || "").trim();
 
-    // ✅ Lấy checked_count của hôm nay từ daily_summary để đảm bảo đúng
+    // ✅ ưu tiên theo danh sách missing (thực tế)
+    const missingCount = Array.isArray(missing.missing) ? missing.missing.length : 0;
+    const checkedCount = Math.max(0, total - missingCount);
+    const completion = total ? Math.round((checkedCount / total) * 100) : 0;
+
+    // issue lấy từ daily_summary
     const todayRow = summary.data?.find((r) => String(r.date).trim() === today);
-    const checkedToday = todayRow
-      ? Number(todayRow.checked_count || 0)
-      : Number(missing.checked || 0);
+    const issueToday = todayRow ? Number(todayRow.issue_count || 0) : 0;
 
-    // ✅ Tính missing thủ công dựa trên tổng xe
-    const missingCountCalculated = Math.max(0, total - checkedToday);
-
-    const completion = total ? Math.round((checkedToday / total) * 100) : 0;
-
-    // ⚠️ kiểm tra mismatch giữa API missing list và calculated
-    const missingListCount = Array.isArray(missing.missing)
-      ? missing.missing.length
-      : 0;
-    const mismatch = missingListCount !== missingCountCalculated;
+    // optional mismatch warning giữa summary checked_count và thực tế
+    const summaryChecked = todayRow ? Number(todayRow.checked_count || 0) : null;
+    const mismatch = summaryChecked !== null && summaryChecked !== checkedCount;
 
     return {
       date: today,
       total,
-      checked: checkedToday,
-      missingCalculated: missingCountCalculated,
-      missingListCount,
+      checked: checkedCount,
+      missing: missingCount,
       completion,
+      issueToday,
       mismatch,
-      issueToday: todayRow ? Number(todayRow.issue_count || 0) : 0,
+      summaryChecked,
     };
   }, [missing, summary]);
 
@@ -138,16 +138,31 @@ export default function DashboardPage() {
         <Alert>
           <AlertTitle>⏳ Đang tải dữ liệu...</AlertTitle>
           <AlertDescription>
-            Vui lòng chờ trong giây lát, hệ thống đang tải báo cáo hôm nay và dữ
-            liệu biểu đồ.
+            Vui lòng chờ trong giây lát, hệ thống đang tải báo cáo hôm nay, danh sách nhân viên và dữ liệu biểu đồ.
           </AlertDescription>
         </Alert>
       )}
 
       {/* Content */}
-      {!loading && missing && summary && kpi && (
+      {!loading && missing && summary && drivers && kpi && (
         <>
-          {/* ⚠️ Mismatch warning */}
+          {/* Optional mismatch warning */}
+          {kpi.mismatch && (
+            <Alert variant="destructive">
+              <AlertTitle>⚠️ daily_summary chưa khớp thực tế</AlertTitle>
+              <AlertDescription>
+                <div>
+                  Theo danh sách thiếu checklist (thực tế): <b>{kpi.checked}</b> xe đã checklist
+                </div>
+                <div>
+                  Theo daily_summary: <b>{kpi.summaryChecked}</b> xe đã checklist
+                </div>
+                <div className="text-sm mt-2 text-muted-foreground">
+                  KPI đang ưu tiên theo danh sách xe thiếu checklist để luôn đúng thực tế.
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
 
           {/* KPI */}
           <div className="grid gap-3 md:grid-cols-5">
@@ -155,53 +170,40 @@ export default function DashboardPage() {
               <CardHeader>
                 <CardTitle className="text-sm">Tổng xe Active</CardTitle>
               </CardHeader>
-              <CardContent className="text-3xl font-bold">
-                {kpi.total}
-              </CardContent>
+              <CardContent className="text-3xl font-bold">{kpi.total}</CardContent>
             </Card>
 
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm">Đã checklist hôm nay</CardTitle>
               </CardHeader>
-              <CardContent className="text-3xl font-bold">
-                {kpi.checked}
-              </CardContent>
+              <CardContent className="text-3xl font-bold">{kpi.checked}</CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">
-                  Chưa checklist hôm nay
-                </CardTitle>
+                <CardTitle className="text-sm">Chưa checklist hôm nay</CardTitle>
               </CardHeader>
-              <CardContent className="text-3xl font-bold text-red-600">
-                {kpi.missingCalculated}
-              </CardContent>
+              <CardContent className="text-3xl font-bold text-red-600">{kpi.missing}</CardContent>
             </Card>
 
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm">Sự cố hôm nay</CardTitle>
               </CardHeader>
-              <CardContent className="text-3xl font-bold text-orange-600">
-                {kpi.issueToday}
-              </CardContent>
+              <CardContent className="text-3xl font-bold text-orange-600">{kpi.issueToday}</CardContent>
             </Card>
 
             <Card>
               <CardHeader>
                 <CardTitle className="text-sm">Tỉ lệ hoàn thành</CardTitle>
               </CardHeader>
-              <CardContent className="text-3xl font-bold">
-                {kpi.completion}%
-              </CardContent>
+              <CardContent className="text-3xl font-bold">{kpi.completion}%</CardContent>
             </Card>
           </div>
 
           <Separator />
 
-          {/* Missing List (NO LINKS) */}
           {/* Missing List (NO LINKS) */}
           <Card>
             <CardHeader>
@@ -212,23 +214,14 @@ export default function DashboardPage() {
               {missing.missing.length === 0 ? (
                 <Alert>
                   <AlertTitle>✅ Tất cả xe đã checklist</AlertTitle>
-                  <AlertDescription>
-                    Không còn xe nào thiếu checklist trong ngày hôm nay.
-                  </AlertDescription>
+                  <AlertDescription>Không còn xe nào thiếu checklist trong ngày hôm nay.</AlertDescription>
                 </Alert>
               ) : (
                 <>
                   <Alert variant="destructive">
                     <AlertTitle>⚠️ Cảnh báo</AlertTitle>
                     <AlertDescription>
-                      Theo thống kê hôm nay còn <b>{kpi.missingCalculated}</b>{" "}
-                      xe chưa checklist.
-                      {kpi.mismatch && (
-                        <div className="text-sm mt-2 text-muted-foreground">
-                          (Danh sách xe bên dưới đang lấy từ API missing:{" "}
-                          <b>{missing.missing.length}</b> xe.)
-                        </div>
-                      )}
+                      Danh sách <b>{missing.missing.length}</b> xe chưa checklist hôm nay.
                     </AlertDescription>
                   </Alert>
 
@@ -237,9 +230,7 @@ export default function DashboardPage() {
                       <Card key={x.forkliftCode}>
                         <CardContent className="p-3">
                           <div className="font-semibold">{x.forkliftCode}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {x.name || "-"}
-                          </div>
+                          <div className="text-sm text-muted-foreground">{x.name || "-"}</div>
                         </CardContent>
                       </Card>
                     ))}
@@ -251,7 +242,45 @@ export default function DashboardPage() {
 
           <Separator />
 
-          {/* Chart */}
+          {/* Drivers Today */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Nhân viên đã thực hiện checklist hôm nay</CardTitle>
+            </CardHeader>
+
+            <CardContent className="space-y-3">
+              {drivers.drivers.length === 0 ? (
+                <Alert>
+                  <AlertTitle>Chưa có dữ liệu</AlertTitle>
+                  <AlertDescription>Hôm nay chưa có nhân viên nào thực hiện checklist.</AlertDescription>
+                </Alert>
+              ) : (
+                <>
+                  <div className="text-sm text-muted-foreground">
+                    Tổng nhân viên đã checklist: <b>{drivers.totalDrivers}</b>
+                  </div>
+
+                  <div className="grid gap-2 md:grid-cols-2">
+                    {drivers.drivers.map((d) => (
+                      <Card key={d.employeeCode}>
+                        <CardContent className="p-3 flex items-center justify-between">
+                          <div>
+                            <div className="font-semibold">{d.employeeName}</div>
+                            <div className="text-sm text-muted-foreground">{d.employeeCode}</div>
+                          </div>
+                          <Badge variant="secondary">{d.count} lượt</Badge>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          <Separator />
+
+          {/* Chart (Column + Line) */}
           <Card>
             <CardHeader>
               <CardTitle>Biểu đồ Checklist & Sự cố (Daily Summary)</CardTitle>
@@ -262,17 +291,11 @@ export default function DashboardPage() {
                 <ComposedChart data={summary.data}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-
-                  {/* ✅ Trục trái: số xe checklist */}
                   <YAxis yAxisId="left" />
-
-                  {/* ✅ Trục phải: số sự cố */}
                   <YAxis yAxisId="right" orientation="right" />
-
-                  <Tooltip />
+                  <Tooltip labelFormatter={(label) => `Ngày: ${label}`} />
                   <Legend />
 
-                  {/* ✅ Column/Bar cho checked_count */}
                   <Bar
                     yAxisId="left"
                     dataKey="checked_count"
@@ -281,7 +304,6 @@ export default function DashboardPage() {
                     radius={[6, 6, 0, 0]}
                   />
 
-                  {/* ✅ Line cho issue_count */}
                   <Line
                     yAxisId="right"
                     type="monotone"
