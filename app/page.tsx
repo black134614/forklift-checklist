@@ -10,6 +10,13 @@ import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+
+import {
   ResponsiveContainer,
   ComposedChart,
   Bar,
@@ -35,6 +42,26 @@ type SummaryResponse = { days?: number; data: SummaryRow[] };
 type DriverItem = { employeeCode: string; employeeName: string; count: number };
 type DriversResponse = { date: string; totalDrivers: number; drivers: DriverItem[] };
 
+type DriverReport = {
+  createdAt: string;
+  date: string;
+  forkliftCode: string;
+  employeeCode: string;
+  employeeName: string;
+  status: string; // PASS | HAS_ISSUE
+  issueDescription: string;
+  issueItems: { q: number; answer: string }[];
+};
+
+type DriverReportsResponse = {
+  date: string;
+  employeeCode: string;
+  employeeName: string;
+  totalReports: number;
+  issueReports: number;
+  reports: DriverReport[];
+};
+
 export default function DashboardPage() {
   const [missing, setMissing] = useState<MissingResponse | null>(null);
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
@@ -42,6 +69,13 @@ export default function DashboardPage() {
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+
+  // Driver detail dialog
+  const [openDriver, setOpenDriver] = useState(false);
+  const [selectedDriver, setSelectedDriver] = useState<DriverItem | null>(null);
+  const [driverReports, setDriverReports] = useState<DriverReportsResponse | null>(null);
+  const [driverLoading, setDriverLoading] = useState(false);
+  const [driverError, setDriverError] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -76,12 +110,12 @@ export default function DashboardPage() {
     const total = Number(missing.total || 0);
     const today = String(missing.date || "").trim();
 
-    // ✅ ưu tiên theo danh sách missing (thực tế)
+    // ✅ Ưu tiên theo danh sách missing (thực tế)
     const missingCount = Array.isArray(missing.missing) ? missing.missing.length : 0;
     const checkedCount = Math.max(0, total - missingCount);
     const completion = total ? Math.round((checkedCount / total) * 100) : 0;
 
-    // issue lấy từ daily_summary
+    // issue lấy từ daily_summary để thống kê
     const todayRow = summary.data?.find((r) => String(r.date).trim() === today);
     const issueToday = todayRow ? Number(todayRow.issue_count || 0) : 0;
 
@@ -100,6 +134,34 @@ export default function DashboardPage() {
       summaryChecked,
     };
   }, [missing, summary]);
+
+  async function openDriverDetail(d: DriverItem) {
+    setSelectedDriver(d);
+    setOpenDriver(true);
+    setDriverReports(null);
+    setDriverError("");
+
+    try {
+      setDriverLoading(true);
+      const date = kpi?.date || "";
+      const url =
+        `/api/admin/driver-reports?employeeCode=${encodeURIComponent(d.employeeCode)}` +
+        (date ? `&date=${encodeURIComponent(date)}` : "");
+
+      const res = await fetch(url, { cache: "no-store" });
+      const data = await res.json();
+
+      if (!res.ok || data?.error) {
+        throw new Error(data?.error || "Không tải được chi tiết checklist theo nhân viên");
+      }
+
+      setDriverReports(data);
+    } catch (e: any) {
+      setDriverError(e.message || "Không tải được chi tiết");
+    } finally {
+      setDriverLoading(false);
+    }
+  }
 
   return (
     <div className="max-w-6xl mx-auto p-4 space-y-4">
@@ -242,7 +304,7 @@ export default function DashboardPage() {
 
           <Separator />
 
-          {/* Drivers Today */}
+          {/* Drivers Today (click to open detail) */}
           <Card>
             <CardHeader>
               <CardTitle>Nhân viên đã thực hiện checklist hôm nay</CardTitle>
@@ -258,11 +320,16 @@ export default function DashboardPage() {
                 <>
                   <div className="text-sm text-muted-foreground">
                     Tổng nhân viên đã checklist: <b>{drivers.totalDrivers}</b>
+                    <span className="ml-2">(Bấm vào nhân viên để xem xe và lỗi)</span>
                   </div>
 
                   <div className="grid gap-2 md:grid-cols-2">
                     {drivers.drivers.map((d) => (
-                      <Card key={d.employeeCode}>
+                      <Card
+                        key={d.employeeCode}
+                        className="cursor-pointer hover:shadow-md transition"
+                        onClick={() => openDriverDetail(d)}
+                      >
                         <CardContent className="p-3 flex items-center justify-between">
                           <div>
                             <div className="font-semibold">{d.employeeName}</div>
@@ -319,6 +386,75 @@ export default function DashboardPage() {
           </Card>
         </>
       )}
+
+      {/* Driver Detail Dialog */}
+      <Dialog open={openDriver} onOpenChange={setOpenDriver}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>
+              Chi tiết checklist — {selectedDriver?.employeeName} ({selectedDriver?.employeeCode})
+            </DialogTitle>
+          </DialogHeader>
+
+          {driverLoading && (
+            <Alert>
+              <AlertTitle>⏳ Đang tải dữ liệu...</AlertTitle>
+              <AlertDescription>Vui lòng chờ trong giây lát.</AlertDescription>
+            </Alert>
+          )}
+
+          {driverError && (
+            <Alert variant="destructive">
+              <AlertTitle>Lỗi</AlertTitle>
+              <AlertDescription>❌ {driverError}</AlertDescription>
+            </Alert>
+          )}
+
+          {!driverLoading && !driverError && driverReports && (
+            <div className="space-y-3">
+              <div className="text-sm text-muted-foreground">
+                Ngày: <b>{driverReports.date}</b> — Tổng lượt: <b>{driverReports.totalReports}</b> — Lượt có lỗi:{" "}
+                <b className="text-red-600">{driverReports.issueReports}</b>
+              </div>
+
+              <div className="space-y-2 max-h-[60vh] overflow-auto pr-2">
+                {driverReports.reports.map((r, idx) => (
+                  <Card key={`${r.createdAt}-${r.forkliftCode}-${idx}`}>
+                    <CardContent className="p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="font-semibold">
+                          Xe: {r.forkliftCode}
+                          <span className="text-xs text-muted-foreground ml-2">{r.createdAt}</span>
+                        </div>
+                        {r.status === "HAS_ISSUE" ? (
+                          <Badge variant="destructive">Có lỗi</Badge>
+                        ) : (
+                          <Badge variant="secondary">Đạt</Badge>
+                        )}
+                      </div>
+
+                      {r.status === "HAS_ISSUE" && (
+                        <>
+                          <div className="text-sm">
+                            <b>Mô tả lỗi:</b> {r.issueDescription || "(không có mô tả)"}
+                          </div>
+
+                          {r.issueItems?.length > 0 && (
+                            <div className="text-sm text-muted-foreground">
+                              <b>Câu bị lỗi:</b>{" "}
+                              {r.issueItems.map((x) => `#${x.q} (${x.answer})`).join(", ")}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
