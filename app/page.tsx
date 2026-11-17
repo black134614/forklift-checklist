@@ -50,8 +50,26 @@ type DriverReport = {
   employeeName: string;
   status: string; // PASS | HAS_ISSUE
   issueDescription: string;
-  issueItems: { q: number; answer: string }[];
+  issueItems: {
+    q?: number;
+    questionId?: string;
+    questionText?: string;
+    answer: string;
+  }[];
 };
+
+function formatIssueItem(x: {
+  q?: number;
+  questionId?: string;
+  questionText?: string;
+  answer: string;
+}) {
+  const label =
+    (x.questionText && x.questionText.trim()) ||
+    (x.questionId ? `#${x.questionId}` : null) ||
+    (x.q != null ? `#${x.q}` : "#?");
+  return `${label} (${x.answer})`;
+}
 
 type DriverReportsResponse = {
   date: string;
@@ -176,15 +194,20 @@ export default function DashboardPage() {
           )}
         </div>
 
-        <Button asChild variant="outline">
-          <a
-            href="https://docs.google.com/spreadsheets/d/1EPb1LKzWo6Z0qRsCBIPAr-d0UpBjakwxG8YoxczjBvA/edit?gid=0#gid=0"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Mở Google Sheet quản lý
-          </a>
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline">
+            <a href="/admin/questions">Quản lý câu hỏi</a>
+          </Button>
+          <Button asChild variant="outline">
+            <a
+              href="https://docs.google.com/spreadsheets/d/1EPb1LKzWo6Z0qRsCBIPAr-d0UpBjakwxG8YoxczjBvA/edit?gid=0#gid=0"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Mở Google Sheet quản lý
+            </a>
+          </Button>
+        </div>
       </div>
 
       {/* Error */}
@@ -440,9 +463,15 @@ export default function DashboardPage() {
                           </div>
 
                           {r.issueItems?.length > 0 && (
-                            <div className="text-sm text-muted-foreground">
-                              <b>Câu bị lỗi:</b>{" "}
-                              {r.issueItems.map((x) => `#${x.q} (${x.answer})`).join(", ")}
+                            <div className="text-sm text-muted-foreground space-y-1">
+                              <b>Câu bị lỗi:</b>
+                              <ul className="list-disc pl-5">
+                                {r.issueItems.map((x, i) => (
+                                  <li key={`${x.questionId || x.q || i}-${x.answer}`}>
+                                    {formatIssueItem(x)}
+                                  </li>
+                                ))}
+                              </ul>
                             </div>
                           )}
                         </>

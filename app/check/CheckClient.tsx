@@ -21,19 +21,12 @@ import { ArrowUp } from "lucide-react";
 
 type Answer = "PASS" | "FAIL" | "OTHER";
 
-const QUESTIONS = [
-  "Kiểm tra càng nâng, trụ nâng, ben thuỷ lực và các phụ kiện không có bất cứ dấu hiệu hư hỏng nào",
-  "Kiểm tra bánh xe, các dây đai an toàn, sự cố rò rỉ dưới thân xe",
-  "Kiểm tra vệ sinh xe trước khi sử dụng",
-  "Kiểm tra sự chắc chắn của đầu nối bình ắc quy và ổ cắm sạc",
-  "Kiểm tra châm nước bình định kỳ",
-  "Kiểm tra tình trạng và khả năng điều chỉnh của ghế ngồi và dây an toàn",
-  "Kiểm tra tất cả các bàn đạp và cần điều khiển về sự vận hành trơn tru",
-  "Kiểm tra thắng chân và thắng tay về sự hoạt động an toàn",
-  "Kiểm tra tình trạng của động cơ, động cơ thủy lực nâng hạ và các cơ cấu chuyền động khác",
-  "Kiểm tra đèn, đèn cảnh báo, kèn/ còi và còi de/ lùi",
-  "Kiểm tra bất kỳ sự hư hỏng hoặc khuyết tật nào được nhìn thấy",
-];
+type Question = {
+  questionId: string;
+  sortOrder: number;
+  text: string;
+  active?: boolean;
+};
 
 async function safeJson(res: Response) {
   const text = await res.text();
@@ -58,6 +51,14 @@ async function safeJson(res: Response) {
   }
 }
 
+function defaultAnswers(questions: Question[]): Record<string, Answer> {
+  const next: Record<string, Answer> = {};
+  for (const q of questions) {
+    next[q.questionId] = "PASS";
+  }
+  return next;
+}
+
 export default function CheckClient() {
   const searchParams = useSearchParams();
   const forkliftCode = (searchParams.get("id") || "").trim(); // /check?id=FL-0001
@@ -68,13 +69,16 @@ export default function CheckClient() {
   const [employeeCode, setEmployeeCode] = useState<string>("");
   const employee = employees.find((e) => e.employeeCode === employeeCode);
 
-  const [answers, setAnswers] = useState<Answer[]>(Array(11).fill("PASS"));
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [answers, setAnswers] = useState<Record<string, Answer>>({});
   const [issueDescription, setIssueDescription] = useState("");
-  const hasIssue = useMemo(() => answers.some((a) => a !== "PASS"), [answers]);
+  const hasIssue = useMemo(
+    () => questions.some((q) => (answers[q.questionId] ?? "PASS") !== "PASS"),
+    [answers, questions]
+  );
 
   /**
-   * ✅ Rule mới:
-   * - status.checked = nhân viên này đã checklist xe này hôm nay chưa?
+   * status.checked = nhân viên này đã checklist xe này hôm nay chưa?
    */
   const [status, setStatus] = useState<{
     checked: boolean;
@@ -87,27 +91,46 @@ export default function CheckClient() {
   const [msg, setMsg] = useState<string>("");
 
   const [showTop, setShowTop] = useState(false);
-  /**
-   * ✅ Load employees khi vào trang
-   */
+
   useEffect(() => {
     (async () => {
       setInitLoading(true);
       setMsg("");
 
       try {
-        const empRes = await fetch("/api/employees", { cache: "no-store" });
+        const [empRes, qRes] = await Promise.all([
+          fetch("/api/employees", { cache: "no-store" }),
+          fetch("/api/questions?activeOnly=true", { cache: "no-store" }),
+        ]);
+
         const empData = await safeJson(empRes);
         if (empData?.error) throw new Error(empData.error);
 
+        const qData = await safeJson(qRes);
+        if (qData?.error) throw new Error(qData.error);
+
+        const list: Question[] = Array.isArray(qData.questions)
+          ? [...qData.questions].sort(
+              (a: Question, b: Question) =>
+                Number(a.sortOrder || 0) - Number(b.sortOrder || 0)
+            )
+          : [];
+
+        if (list.length === 0) {
+          throw new Error("Chưa có câu hỏi active. Vào /admin/questions để cấu hình.");
+        }
+
         setEmployees(empData.employees || []);
+        setQuestions(list);
+        setAnswers(defaultAnswers(list));
       } catch (e: any) {
-        setMsg("❌ Không tải được danh sách nhân viên: " + e.message);
+        setMsg("❌ Không tải được dữ liệu: " + e.message);
       } finally {
         setInitLoading(false);
       }
     })();
   }, []);
+
   useEffect(() => {
     const onScroll = () => {
       setShowTop(window.scrollY > 300);
@@ -122,10 +145,7 @@ export default function CheckClient() {
   function scrollToTop() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
-  /**
-   * ✅ Rule mới: chỉ check status sau khi chọn nhân viên
-   * Gọi: /api/forklift/status?forkliftCode=...&employeeCode=...
-   */
+
   useEffect(() => {
     if (!forkliftCode || !employeeCode) {
       setStatus(null);
@@ -171,7 +191,10 @@ export default function CheckClient() {
 
       if (!employee) throw new Error("Vui lòng chọn nhân viên");
 
-      // ✅ Chặn nếu nhân viên này đã checklist xe này hôm nay
+      if (questions.length === 0) {
+        throw new Error("Không có câu hỏi để gửi");
+      }
+
       if (status?.checked) {
         throw new Error(
           `Bạn (${employee.fullName}) đã checklist xe ${forkliftCode} hôm nay rồi. Không thể gửi lại.`
@@ -186,7 +209,11 @@ export default function CheckClient() {
         forkliftCode,
         employeeCode: employee.employeeCode,
         employeeName: employee.fullName,
-        answers,
+        answers: questions.map((q) => ({
+          questionId: q.questionId,
+          questionText: q.text,
+          answer: answers[q.questionId] ?? "PASS",
+        })),
         issueDescription,
       };
 
@@ -201,7 +228,7 @@ export default function CheckClient() {
         throw new Error(data?.error || "Gửi thất bại");
 
       setMsg("✅ Gửi checklist thành công!");
-      setStatus({ checked: true, date: data?.date }); // ✅ nhân viên này đã làm xong
+      setStatus({ checked: true, date: data?.date });
     } catch (e: any) {
       setMsg("❌ " + e.message);
     } finally {
@@ -209,12 +236,12 @@ export default function CheckClient() {
     }
   }
 
-  // ✅ Disable form trong lúc load / thiếu id / hoặc nhân viên này đã làm
   const formDisabled =
     initLoading ||
     loading ||
     statusLoading ||
     !forkliftCode ||
+    questions.length === 0 ||
     (employeeCode ? status?.checked : false);
 
   return (
@@ -232,18 +259,16 @@ export default function CheckClient() {
         </CardHeader>
 
         <CardContent className="space-y-3">
-          {/* Loading */}
           {initLoading && (
             <Alert>
               <AlertTitle>⏳ Đang tải dữ liệu...</AlertTitle>
               <AlertDescription>
                 Vui lòng chờ trong giây lát, hệ thống đang tải danh sách nhân
-                viên.
+                viên và câu hỏi.
               </AlertDescription>
             </Alert>
           )}
 
-          {/* Thiếu mã xe */}
           {!forkliftCode && (
             <Alert variant="destructive">
               <AlertTitle>Thiếu mã xe</AlertTitle>
@@ -253,7 +278,6 @@ export default function CheckClient() {
             </Alert>
           )}
 
-          {/* Khi đã chọn tài xế và đang check status */}
           {employeeCode && statusLoading && (
             <Alert>
               <AlertTitle>⏳ Đang kiểm tra trạng thái xe...</AlertTitle>
@@ -263,7 +287,6 @@ export default function CheckClient() {
             </Alert>
           )}
 
-          {/* Nếu nhân viên này đã checklist xe này hôm nay */}
           {employeeCode && status?.checked && (
             <Alert>
               <AlertTitle>✅ Đã checklist (theo tài xế)</AlertTitle>
@@ -275,7 +298,6 @@ export default function CheckClient() {
             </Alert>
           )}
 
-          {/* Message tổng */}
           {msg && (
             <Alert variant={msg.startsWith("✅") ? "default" : "destructive"}>
               <AlertTitle>
@@ -285,7 +307,6 @@ export default function CheckClient() {
             </Alert>
           )}
 
-          {/* Chọn nhân viên + gửi */}
           <div className="grid gap-4 md:grid-cols-2">
             <div>
               <div className="text-sm font-medium mb-2">Chọn nhân viên</div>
@@ -325,13 +346,12 @@ export default function CheckClient() {
 
           <Separator />
 
-          {/* Checklist */}
           <div className="space-y-3">
-            {QUESTIONS.map((q, idx) => (
-              <Card key={idx}>
+            {questions.map((q, idx) => (
+              <Card key={q.questionId}>
                 <CardContent className="p-4 space-y-2">
                   <div className="font-medium">
-                    {idx + 1}. {q}
+                    {idx + 1}. {q.text}
                   </div>
 
                   <div className="flex flex-wrap gap-2">
@@ -339,11 +359,16 @@ export default function CheckClient() {
                       <Button
                         key={v}
                         type="button"
-                        variant={answers[idx] === v ? "default" : "outline"}
+                        variant={
+                          (answers[q.questionId] ?? "PASS") === v
+                            ? "default"
+                            : "outline"
+                        }
                         onClick={() => {
-                          const next = [...answers];
-                          next[idx] = v;
-                          setAnswers(next);
+                          setAnswers((prev) => ({
+                            ...prev,
+                            [q.questionId]: v,
+                          }));
                         }}
                         disabled={formDisabled}
                       >
@@ -360,7 +385,6 @@ export default function CheckClient() {
             ))}
           </div>
 
-          {/* Mô tả lỗi */}
           {hasIssue && !status?.checked && (
             <Card>
               <CardHeader>
