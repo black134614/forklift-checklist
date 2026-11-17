@@ -123,3 +123,87 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* QR print — A5: chỉ tên lớn + QR (/admin/qr)
+   Không dùng display:none — Chrome hay lỗi tạo file in. */
+@media screen {
+  .print-root {
+    position: absolute;
+    left: -10000px;
+    top: 0;
+    width: 148mm;
+    overflow: hidden;
+    pointer-events: none;
+  }
+}
+
+@media print {
+  @page {
+    size: A5 portrait;
+    margin: 12mm;
+  }
+
+  html,
+  body {
+    background: white !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-root {
+    position: static !important;
+    left: auto !important;
+    width: 100% !important;
+    overflow: visible !important;
+    pointer-events: auto !important;
+  }
+
+  .qr-a5-page {
+    width: 100%;
+    height: 100%;
+    min-height: 186mm;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 14mm;
+    page-break-after: always;
+    break-after: page;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  .qr-a5-page:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+
+  .qr-a5-name {
+    font-size: 28pt;
+    font-weight: 800;
+    line-height: 1.2;
+    color: #000;
+    max-width: 120mm;
+    word-break: break-word;
+  }
+
+  .qr-a5-qr {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .qr-a5-qr canvas {
+    width: 85mm !important;
+    height: 85mm !important;
+  }
+}

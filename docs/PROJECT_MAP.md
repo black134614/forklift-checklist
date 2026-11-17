@@ -60,6 +60,7 @@ Schema DB không có trong repo; dữ liệu nằm trên Google Sheets.
 | Dashboard | `app/page.tsx` | KPI, missing, drivers, chart, dialog chi tiết | `/api/admin/*`, Recharts, UI |
 | Checklist | `app/check/page.tsx` + `CheckClient.tsx` | Form động theo câu hỏi active, status NV+xe, submit snapshot | `/api/employees`, `/api/questions`, `/api/forklift/status`, `/api/checklist/submit` |
 | Admin questions | `app/admin/questions/page.tsx` | Thêm/sửa/vô hiệu hóa câu hỏi | `/api/questions`, `/api/admin/questions` |
+| Admin QR A5 | `app/admin/qr/page.tsx` | Chọn xe active, in QR khổ A5 → `/check?id=` | `/api/forklifts`, `qrcode.react` |
 | Admin missing | `app/admin/missing/page.tsx` | List xe thiếu (đơn giản) | `lib/gas.ts` → GAS `missing` (bypass Next API) |
 | Layout | `app/layout.tsx` | Shell HTML, fonts Geist | `globals.css` |
 
@@ -68,6 +69,7 @@ Schema DB không có trong repo; dữ liệu nằm trên Google Sheets.
 | Route | Method | GAS action |
 |-------|--------|------------|
 | `app/api/employees/route.ts` | GET | `employees` |
+| `app/api/forklifts/route.ts` | GET | `forklifts` (+ optional `activeOnly`) |
 | `app/api/questions/route.ts` | GET | `questions` (+ optional `activeOnly`) |
 | `app/api/forklift/status/route.ts` | GET | `status` (+ `forkliftCode`, optional `employeeCode`) |
 | `app/api/checklist/submit/route.ts` | POST | `submitChecklist` |
@@ -133,11 +135,12 @@ flowchart LR
 
 ## 5. Entry points
 
-**Pages:** `/` (dashboard), `/check?id=...` (checklist), `/admin/questions`, `/admin/missing`
+**Pages:** `/` (dashboard), `/check?id=...` (checklist), `/admin/qr` (in QR A5), `/admin/questions`, `/admin/missing`
 
 **API:**
 
 - `GET /api/employees`
+- `GET /api/forklifts`
 - `GET /api/questions`
 - `GET /api/forklift/status`
 - `POST /api/checklist/submit`
@@ -159,6 +162,7 @@ flowchart LR
 |-----|----------|
 | `GAS_URL` | Tất cả `app/api/**` (server) |
 | `NEXT_PUBLIC_GAS_URL` | `lib/gas.ts` / `/admin/missing` (client) |
+| `NEXT_PUBLIC_APP_URL` | Base URL trong QR in (`/admin/qr`); mặc định = origin trình duyệt |
 
 Hai URL nên trỏ cùng một deployment GAS. Chưa có `.env.example` trong repo (`.env*` bị gitignore).
 
@@ -167,6 +171,7 @@ Hai URL nên trỏ cùng một deployment GAS. Chưa có `.env.example` trong re
 | Action | Response (xấp xỉ) |
 |--------|-------------------|
 | `employees` | `{ employees: [{ employeeCode, fullName }] }` |
+| `forklifts` | `{ forklifts: [{ forkliftCode, name, active }] }` |
 | `questions` | `{ questions: [{ questionId, sortOrder, text, active, updatedAt? }] }` |
 | `saveQuestion` | `{ ok, question }` |
 | `setQuestionActive` | `{ ok, question }` |

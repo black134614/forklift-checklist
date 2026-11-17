@@ -196,6 +196,9 @@ export default function DashboardPage() {
 
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline">
+            <a href="/admin/qr">In QR A5</a>
+          </Button>
+          <Button asChild variant="outline">
             <a href="/admin/questions">Quản lý câu hỏi</a>
           </Button>
           <Button asChild variant="outline">

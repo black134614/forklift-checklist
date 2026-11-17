@@ -12,7 +12,47 @@ function doGet(e) {
   if (action === "drivers") return getDriversToday(e);
   if (action === "driverReports") return getDriverReports(e);
   if (action === "questions") return getQuestions(e);
+  if (action === "forklifts") return getForklifts(e);
   return json({ error: "Invalid action" });
+}
+
+/** =========================
+ *  GET FORKLIFTS (for QR print)
+ *  ========================= */
+function getForklifts(e) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_FORKLIFTS);
+  if (!sheet) return json({ error: "Missing forklifts sheet" });
+
+  const activeOnly = String((e.parameter && e.parameter.activeOnly) || "") === "true";
+
+  const values = sheet.getDataRange().getValues();
+  const header = values.shift();
+  const idxCode = header.indexOf("forkliftCode");
+  const idxName = header.indexOf("name");
+  const idxActive = header.indexOf("active");
+
+  if (idxCode === -1 || idxActive === -1) {
+    return json({ error: "Sheet forklifts thiếu cột forkliftCode hoặc active" });
+  }
+
+  const forklifts = values
+    .map(function (r) {
+      const active =
+        r[idxActive] === true || String(r[idxActive]).toUpperCase() === "TRUE";
+      return {
+        forkliftCode: String(r[idxCode] || "").trim(),
+        name: String(r[idxName] || "").trim(),
+        active: active,
+      };
+    })
+    .filter(function (f) {
+      if (!f.forkliftCode) return false;
+      if (activeOnly && !f.active) return false;
+      return true;
+    });
+
+  return json({ forklifts: forklifts });
 }
 
 function doPost(e) {

@@ -6,7 +6,16 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const days = searchParams.get("days") || "30";
 
-    const base = process.env.GAS_URL!;
+    const base = process.env.GAS_URL;
+    if (!base) {
+      return NextResponse.json(
+        {
+          error:
+            "Missing GAS_URL in env. Thêm vào .env.local rồi restart npm run dev.",
+        },
+        { status: 500 }
+      );
+    }
     const url = `${base}?action=summary&days=${encodeURIComponent(days)}`;
 
     const res = await fetch(url, { cache: "no-store" });
